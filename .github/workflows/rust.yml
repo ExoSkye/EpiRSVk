@@ -20,10 +20,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    
+    - name: Get CMake and Ninja (Windows only)
+      if: matrix.os == "windows-latest"
+      uses: lukka/get-cmake@v3.21.2
+      
     - name: Build
       run: cargo build --verbose --release
+      
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2.2.4
       with:
-        name: Ubuntu
-        path: out/EpiRSVk*
+        name: ${{ matrix.os }}
+        path: target/release/*
