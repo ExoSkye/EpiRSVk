@@ -12,7 +12,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain::{AcquireError, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreationError};
 use vulkano::sync::{FlushError, GpuFuture};
@@ -25,6 +25,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Window, WindowBuilder};
 use tracy_client;
+use vulkano::descriptor_set::PersistentDescriptorSet;
 
 mod vert_shader {
     vulkano_shaders::shader!{
@@ -97,6 +98,8 @@ pub(crate) struct VulkanContext {
     vertex_buf: Option<Arc<DeviceLocalBuffer<[Vertex]>>>,
     render_pass: Option<Arc<RenderPass>>,
     viewport: Arc<Viewport>,
+    vertex_descriptor_set: Option<Arc<PersistentDescriptorSet>>,
+    person_descriptor_set: Option<Arc<PersistentDescriptorSet>>
 }
 
 impl VulkanContext {
@@ -141,6 +144,8 @@ impl VulkanContext {
                 dimensions: [x as f32, y as f32],
                 depth_range: 0.0..1.0,
             }),
+            vertex_descriptor_set: None,
+            person_descriptor_set: None
         };
 
         {
@@ -352,6 +357,26 @@ impl VulkanContext {
                     ).expect("Couldn't create vertex buffer"),
                 );
             }
+            /*{
+                let _span = tracy_client::span!("Create descriptor set 0 for compute");
+
+                let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+                let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+                set_builder.add_buffer(ctx.vertex_buf.unwrap().clone()).unwrap();
+
+                ctx.vertex_descriptor_set = Some(Arc::new(set_builder.build().unwrap()));
+            }
+            {
+                let _span = tracy_client::span!("Create descriptor set 0 for compute");
+
+                let layout = pipeline.layout().descriptor_set_layouts().get(1).unwrap();
+                let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+                set_builder.add_buffer(ctx.people_buf.unwrap().clone()).unwrap();
+
+                ctx.person_descriptor_set = Some(Arc::new(set_builder.build().unwrap()));
+            }*/
         }
 
         ctx.previous_frame_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
@@ -420,23 +445,53 @@ impl VulkanContext {
                         self.recreate_swapchain = true;
                     }
 
-                    let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
-                    let mut builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
+                    let mut compute_command_builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
 
                     {
-                        let _span = tracy_client::span!("Create CommandBufferBuilder");
+                        let _span = tracy_client::span!("Create Compute CommandBufferBuilder");
 
-                        builder = AutoCommandBufferBuilder::primary(
+                        compute_command_builder = AutoCommandBufferBuilder::primary(
+                            self.device.as_ref().unwrap().clone(),
+                            self.compute_queue.as_ref().unwrap().family(),
+                            CommandBufferUsage::OneTimeSubmit,
+                        ).expect("Couldn't create the Compute Command Buffer Builder");
+                    }
+
+                    {
+                        /*let _span = tracy_client::span!("Run compute shader");
+                        compute_command_builder
+                            .bind_pipeline_compute(self.comp_pipeline.as_ref().unwrap().clone())
+                            .bind_descriptor_sets(
+                                PipelineBindPoint::Compute,
+                                self.comp_pipeline.as_ref().unwrap().layout().clone(),
+                                0,
+                                self.vertex_descriptor_set.clone()
+                            )
+                            .bind_descriptor_sets(
+                                PipelineBindPoint::Compute,
+                                self.comp_pipeline.as_ref().unwrap().layout().clone(),
+                                1,
+                                self.person_descriptor_set.clone()
+                            )
+                            .dispatch([1,1,1])*/
+                    }
+
+                    let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
+                    let mut graphics_command_builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
+
+                    {
+                        let _span = tracy_client::span!("Create Graphics CommandBufferBuilder");
+
+                        graphics_command_builder = AutoCommandBufferBuilder::primary(
                             self.device.as_ref().unwrap().clone(),
                             self.graphics_queue.as_ref().unwrap().family(),
                             CommandBufferUsage::OneTimeSubmit,
-                        )
-                            .expect("Couldn't create the Command Buffer Builder");
+                        ).expect("Couldn't create the Graphics Command Buffer Builder");
                     }
 
                     {
                         let _span = tracy_client::span!("Run render pass");
-                        builder
+                        graphics_command_builder
                             .begin_render_pass(
                                 self.framebuffers.as_ref().unwrap()[image_num].clone(),
                                 SubpassContents::Inline,
@@ -451,7 +506,7 @@ impl VulkanContext {
                             .end_render_pass()
                             .unwrap();
 
-                        let command_buffer = builder.build().unwrap();
+                        let command_buffer = graphics_command_builder.build().unwrap();
 
                         let future = self
                             .previous_frame_end
