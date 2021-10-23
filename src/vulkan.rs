@@ -182,7 +182,7 @@ impl VulkanContext {
                             supports_graphics = Some(qf);
                         }
 
-                        if qf.supports_compute() {
+                        else if qf.supports_compute() {
                             supports_compute = Some(qf);
                         }
 
