@@ -26,11 +26,10 @@ fn main() {
     }
 
     'render_loop: loop  {
+        let _frame = tracy_client::start_noncontinuous_frame();
         let _span = tracy_client::span!("Render");
         match ctx.render() {
-            Ok(_) => {
-                tracy_client::finish_continuous_frame!();
-            }
+            Ok(_) => {}
             Err(msg) => {
                 println!("Exiting because:\n{}",msg);
                 break 'render_loop;
