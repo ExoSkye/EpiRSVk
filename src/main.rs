@@ -35,5 +35,7 @@ fn main() {
                 break 'render_loop;
             }
         }
+        drop(_span);
+        drop(_frame);
     }
 }
