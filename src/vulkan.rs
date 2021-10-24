@@ -4,7 +4,7 @@ use std::sync::Arc;
 use vulkano::buffer::device_local::DeviceLocalBuffer;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::buffer::{BufferUsage, TypedBufferAccess};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, PrimaryCommandBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 use vulkano::command_buffer::{CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
@@ -12,9 +12,9 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain::{AcquireError, Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, Surface, Swapchain, SwapchainCreationError};
 use vulkano::sync::{FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano::{swapchain, sync};
@@ -117,7 +117,7 @@ impl VulkanContext {
         let mut ctx = VulkanContext {
             instance: {
                 let _span = tracy_client::span!("Create Instance");
-                Instance::new(None, Version::V1_2, &req_ext, None)
+                Instance::new(Some(&vulkano::app_info_from_cargo_toml!()), Version::V1_2, &req_ext, None)
                     .expect("Couldn't initialize Vulkano Instance")
             },
             event_loop: EventLoop::new(),
