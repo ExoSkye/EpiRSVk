@@ -26,7 +26,7 @@ fn main() {
     }
 
     'render_loop: loop  {
-        let _frame = tracy_client::start_noncontinuous_frame!("Frame");
+        let _frame = tracy_client::start_noncontinuous_frame!("Frame\0");
         let _span = tracy_client::span!("Render");
         match ctx.render() {
             Ok(_) => {}
