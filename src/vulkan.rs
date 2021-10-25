@@ -2,7 +2,8 @@ use crate::person::Person;
 use std::boxed::Box;
 use std::sync::Arc;
 use vulkano::buffer::device_local::DeviceLocalBuffer;
-use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::buffer::{CpuAccessibleBuffer, CpuBufferPool};
+use vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer;
 use vulkano::buffer::{BufferUsage, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 use vulkano::command_buffer::{CommandBufferUsage, SubpassContents};
@@ -12,7 +13,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain::{AcquireError, Surface, Swapchain, SwapchainCreationError};
 use vulkano::sync::{FlushError, GpuFuture};
@@ -93,13 +94,13 @@ pub(crate) struct VulkanContext {
     comp_pipeline: Option<Arc<ComputePipeline>>,
     graphics_pipeline: Option<Arc<GraphicsPipeline>>,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
+    previous_compute_end: Option<Box<dyn GpuFuture>>,
     framebuffers: Option<Vec<Arc<dyn FramebufferAbstract>>>,
     people_buf: Option<Arc<CpuAccessibleBuffer<[Person]>>>,
     vertex_buf: Option<Arc<DeviceLocalBuffer<[Vertex]>>>,
     render_pass: Option<Arc<RenderPass>>,
     viewport: Arc<Viewport>,
-    vertex_descriptor_set: Option<Arc<PersistentDescriptorSet>>,
-    person_descriptor_set: Option<Arc<PersistentDescriptorSet>>
+    ubo: Option<Arc<CpuAccessibleBuffer<[compute_shader::ty::rodata]>>>
 }
 
 impl VulkanContext {
@@ -135,6 +136,7 @@ impl VulkanContext {
             comp_pipeline: None,
             graphics_pipeline: None,
             previous_frame_end: None,
+            previous_compute_end: None,
             framebuffers: None,
             people_buf: None,
             vertex_buf: None,
@@ -144,8 +146,7 @@ impl VulkanContext {
                 dimensions: [x as f32, y as f32],
                 depth_range: 0.0..1.0,
             }),
-            vertex_descriptor_set: None,
-            person_descriptor_set: None
+            ubo: None
         };
 
         {
@@ -357,29 +358,28 @@ impl VulkanContext {
                     ).expect("Couldn't create vertex buffer"),
                 );
             }
-            /*{
-                let _span = tracy_client::span!("Create descriptor set 0 for compute");
-
-                let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-                let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-                set_builder.add_buffer(ctx.vertex_buf.unwrap().clone()).unwrap();
-
-                ctx.vertex_descriptor_set = Some(Arc::new(set_builder.build().unwrap()));
-            }
             {
-                let _span = tracy_client::span!("Create descriptor set 0 for compute");
+                let _span = tracy_client::span!("Create UBO");
+                ctx.ubo = Some(
+                    CpuAccessibleBuffer::from_iter(
+                        ctx.device.as_ref().unwrap().clone(),
+                        BufferUsage::all(),
+                        false,
+                        vec![compute_shader::ty::rodata {
+                            region_size_x: 16 as u32,
+                            region_size_y: 16 as u32,
+                            size_x: x as u32,
+                            size_y: y as u32,
+                            len: people.len() as u32,
+                        }].iter().cloned()
 
-                let layout = pipeline.layout().descriptor_set_layouts().get(1).unwrap();
-                let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-                set_builder.add_buffer(ctx.people_buf.unwrap().clone()).unwrap();
-
-                ctx.person_descriptor_set = Some(Arc::new(set_builder.build().unwrap()));
-            }*/
+                    ).expect("Couldn't create UBO")
+                )
+            }
         }
 
         ctx.previous_frame_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
+        ctx.previous_compute_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
 
         ctx
     }
@@ -457,26 +457,58 @@ impl VulkanContext {
                         ).expect("Couldn't create the Compute Command Buffer Builder");
                     }
 
+                    let mut set_people: Arc<PersistentDescriptorSet>;
+                    let mut set_vert: Arc<PersistentDescriptorSet>;
+                    let mut set_ubo: Arc<PersistentDescriptorSet>;
+
+                    let layout = self.comp_pipeline.as_ref().unwrap().layout();
+
                     {
-                        /*let _span = tracy_client::span!("Run compute shader");
+                        let mut people_set_builder = PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[0].clone());
+
+                        people_set_builder.add_buffer(self.people_buf.as_ref().unwrap().clone());
+
+                        set_people = Arc::new(people_set_builder.build().unwrap());
+
+                        let mut vert_set_builder = PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[1].clone());
+
+                        vert_set_builder.add_buffer(self.people_buf.as_ref().unwrap().clone());
+
+                        set_vert = Arc::new(vert_set_builder.build().unwrap());
+
+                        let mut ubo_set_builder = PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[2].clone());
+
+                        ubo_set_builder.add_buffer(self.ubo.as_ref().unwrap().clone());
+
+                        set_ubo = Arc::new(ubo_set_builder.build().unwrap());
+
+                    }
+                    {
+                        let _span = tracy_client::span!("Run compute shader");
                         compute_command_builder
                             .bind_pipeline_compute(self.comp_pipeline.as_ref().unwrap().clone())
-                            .bind_descriptor_sets(
-                                PipelineBindPoint::Compute,
-                                self.comp_pipeline.as_ref().unwrap().layout().clone(),
-                                0,
-                                self.vertex_descriptor_set.clone()
+                            .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 0, set_people.clone())
+                            .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 1, set_vert.clone())
+                            .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 2, set_ubo.clone())
+                            .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32,1,1])
+                            .unwrap();
+
+                        let future = self.
+                            previous_compute_end
+                            .take()
+                            .unwrap()
+                            .then_execute(
+                                self.compute_queue.as_ref().unwrap().clone(),
+                                compute_command_builder.build().unwrap()
                             )
-                            .bind_descriptor_sets(
-                                PipelineBindPoint::Compute,
-                                self.comp_pipeline.as_ref().unwrap().layout().clone(),
-                                1,
-                                self.person_descriptor_set.clone()
-                            )
-                            .dispatch([1,1,1])*/
+                            .unwrap()
+                            .then_signal_fence_and_flush()
+                            .unwrap();
+
+                        future.wait(None).unwrap();
                     }
 
-                    let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
+                    let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
                     let mut graphics_command_builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
 
                     {
