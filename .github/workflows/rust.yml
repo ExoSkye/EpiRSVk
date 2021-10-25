@@ -34,11 +34,11 @@ jobs:
       uses: lukka/get-cmake@v3.21.2
       
     - name: Build Release
-      if: matrix.build_type == "release"
+      if: ${{ matrix.build_type }} == "release"
       run: cargo build --verbose --release
       
     - name: Build Debug
-      if: matrix.build_type == "debug"
+      if: ${{ matrix.build_type }} == "debug"
       run: cargo build --verbose
       
     - name: Upload a Build Artifact
