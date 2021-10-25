@@ -16,6 +16,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        build_type: ["debug","release"]
 
 
     runs-on: ${{ matrix.os }}
@@ -33,10 +34,10 @@ jobs:
       uses: lukka/get-cmake@v3.21.2
       
     - name: Build
-      run: cargo build --verbose --release
+      run: cargo build --verbose --${{ matrix.build_type }}
       
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2.2.4
       with:
-        name: ${{ matrix.os }}
+        name: ${{ matrix.os }}-${{ matrix.build_type }}
         path: target/release/EpiRSVk*
