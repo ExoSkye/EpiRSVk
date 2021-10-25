@@ -487,9 +487,7 @@ impl VulkanContext {
                         let _span = tracy_client::span!("Run compute shader");
                         compute_command_builder
                             .bind_pipeline_compute(self.comp_pipeline.as_ref().unwrap().clone())
-                            .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 0, set_people.clone())
-                            .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 1, set_vert.clone())
-                            .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 2, set_ubo.clone())
+                            .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 0, vec![set_people.clone(),set_vert.clone(),set_ubo.clone()])
                             .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32,1,1])
                             .unwrap();
 
