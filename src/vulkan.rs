@@ -504,7 +504,7 @@ impl VulkanContext {
 
                         future.wait(None).unwrap();
 
-                        println!("Compute shader finished")
+                        println!("Compute shader finished");
                     }
 
                     let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
