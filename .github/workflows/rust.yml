@@ -41,4 +41,7 @@ jobs:
       uses: actions/upload-artifact@v2.2.4
       with:
         name: ${{ matrix.os }}
-        path: target/release/EpiRSVk*
+        path: |
+          target/debug/EpiRSVk.exe
+          target/debug/EpiRSVk.pdb
+          target/debug/EpiRSVk
