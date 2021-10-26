@@ -94,7 +94,6 @@ pub(crate) struct VulkanContext {
     comp_pipeline: Option<Arc<ComputePipeline>>,
     graphics_pipeline: Option<Arc<GraphicsPipeline>>,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
-    previous_compute_end: Option<Box<dyn GpuFuture>>,
     framebuffers: Option<Vec<Arc<dyn FramebufferAbstract>>>,
     people_buf: Option<Arc<CpuAccessibleBuffer<[Person]>>>,
     vertex_buf: Option<Arc<DeviceLocalBuffer<[Vertex]>>>,
@@ -136,7 +135,6 @@ impl VulkanContext {
             comp_pipeline: None,
             graphics_pipeline: None,
             previous_frame_end: None,
-            previous_compute_end: None,
             framebuffers: None,
             people_buf: None,
             vertex_buf: None,
@@ -379,7 +377,6 @@ impl VulkanContext {
         }
 
         ctx.previous_frame_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
-        ctx.previous_compute_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
 
         ctx
     }
@@ -464,6 +461,8 @@ impl VulkanContext {
                     let layout = self.comp_pipeline.as_ref().unwrap().layout();
 
                     {
+                        let _span = tracy_client::span!("Build descriptor sets");
+
                         let mut people_set_builder = PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[0].clone());
 
                         people_set_builder.add_buffer(self.people_buf.as_ref().unwrap().clone());
@@ -491,10 +490,7 @@ impl VulkanContext {
                             .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32,1,1])
                             .unwrap();
 
-                        let future = self.
-                            previous_compute_end
-                            .take()
-                            .unwrap()
+                        let future = sync::now(self.device.as_ref().unwrap().clone())
                             .then_execute(
                                 self.compute_queue.as_ref().unwrap().clone(),
                                 compute_command_builder.build().unwrap()

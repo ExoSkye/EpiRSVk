@@ -35,5 +35,6 @@ void main() {
     uint index = gl_GlobalInvocationID.x;
     if (index < len) {
         verticies[index].vertex_pos = people[index].person_pos;
+        verticies[index].color = vec3(1.0,1.0,1.0);
     }
 }
