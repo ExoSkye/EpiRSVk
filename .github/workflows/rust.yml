@@ -35,10 +35,12 @@ jobs:
       uses: lukka/get-cmake@v3.21.2
       
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --release
       
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2.2.4
       with:
         name: ${{ matrix.os }}
-        path: target/release/EpiRSVk*
+        path: |
+          target/release/EpiRSVk.exe
+          target/release/EpiRSVk
