@@ -454,34 +454,25 @@ impl VulkanContext {
                         ).expect("Couldn't create the Compute Command Buffer Builder");
                     }
 
-                    let mut set_people: Arc<PersistentDescriptorSet>;
-                    let mut set_vert: Arc<PersistentDescriptorSet>;
-                    let mut set_ubo: Arc<PersistentDescriptorSet>;
-
                     let layout = self.comp_pipeline.as_ref().unwrap().layout();
 
-                    {
+                    let (set_people, set_vert, set_ubo) = {
                         let _span = tracy_client::span!("Build descriptor sets");
+                        (Arc::new(
+                            PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[0].clone())
+                                .add_buffer(self.people_buf.as_ref().unwrap().clone()).unwrap()
+                                .build().unwrap()
+                        ), Arc::new(
+                            PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[1].clone())
+                                .add_buffer(self.vertex_buf.as_ref().unwrap().clone()).unwrap()
+                                .build().unwrap()
+                        ), Arc::new(
+                            PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[2].clone())
+                                .add_buffer(self.ubo.as_ref().unwrap().clone()).unwrap()
+                                .build().unwrap()
+                        ))
+                    };
 
-                        let mut people_set_builder = PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[0].clone());
-
-                        people_set_builder.add_buffer(self.people_buf.as_ref().unwrap().clone());
-
-                        set_people = Arc::new(people_set_builder.build().unwrap());
-
-                        let mut vert_set_builder = PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[1].clone());
-
-                        vert_set_builder.add_buffer(self.people_buf.as_ref().unwrap().clone());
-
-                        set_vert = Arc::new(vert_set_builder.build().unwrap());
-
-                        let mut ubo_set_builder = PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[2].clone());
-
-                        ubo_set_builder.add_buffer(self.ubo.as_ref().unwrap().clone());
-
-                        set_ubo = Arc::new(ubo_set_builder.build().unwrap());
-
-                    }
                     {
                         println!("Running compute shader");
                         let _span = tracy_client::span!("Run compute shader");
