@@ -365,7 +365,7 @@ impl VulkanContext {
                     DeviceLocalBuffer::array(
                         ctx.device.as_ref().unwrap().clone(),
                         (people.len() as usize * std::mem::size_of::<Vertex>()) as u64,
-                        BufferUsage::All(),
+                        BufferUsage::all(),
                         [
                             ctx.compute_queue.as_ref().unwrap().family(),
                             ctx.graphics_queue.as_ref().unwrap().family(),
