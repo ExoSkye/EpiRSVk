@@ -483,12 +483,15 @@ impl VulkanContext {
 
                     }
                     {
+                        println!("Running compute shader");
                         let _span = tracy_client::span!("Run compute shader");
                         compute_command_builder
                             .bind_pipeline_compute(self.comp_pipeline.as_ref().unwrap().clone())
                             .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 0, vec![set_people.clone(),set_vert.clone(),set_ubo.clone()])
                             .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32,1,1])
                             .unwrap();
+
+                        plintln!("Started compute shader");
 
                         let future = sync::now(self.device.as_ref().unwrap().clone())
                             .then_execute(
@@ -500,6 +503,8 @@ impl VulkanContext {
                             .unwrap();
 
                         future.wait(None).unwrap();
+
+                        println!("Compute shader finished")
                     }
 
                     let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
