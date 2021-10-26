@@ -1,17 +1,19 @@
 use crate::person::Person;
 use std::boxed::Box;
 use std::sync::Arc;
-use vulkano::buffer::device_local::DeviceLocalBuffer;
-use vulkano::buffer::{CpuAccessibleBuffer, CpuBufferPool};
+use tracy_client;
 use vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer;
+use vulkano::buffer::device_local::DeviceLocalBuffer;
 use vulkano::buffer::{BufferUsage, TypedBufferAccess};
+use vulkano::buffer::{CpuAccessibleBuffer, CpuBufferPool};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 use vulkano::command_buffer::{CommandBufferUsage, SubpassContents};
+use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance};
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -25,25 +27,23 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Window, WindowBuilder};
-use tracy_client;
-use vulkano::descriptor_set::PersistentDescriptorSet;
 
 mod vert_shader {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "vertex",
         path: "shaders/vert.glsl"
     }
 }
 
 mod frag_shader {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "fragment",
         path: "shaders/frag.glsl"
     }
 }
 
 mod compute_shader {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "compute",
         path: "shaders/comp.glsl"
     }
@@ -75,7 +75,7 @@ fn window_size_dependent_setup(
 #[derive(Default, Debug, Clone, Copy)]
 struct Vertex {
     pos: [f32; 2],
-    color: [f32; 3]
+    color: [f32; 3],
 }
 
 pub(crate) struct VulkanContext {
@@ -99,7 +99,10 @@ pub(crate) struct VulkanContext {
     vertex_buf: Option<Arc<DeviceLocalBuffer<[Vertex]>>>,
     render_pass: Option<Arc<RenderPass>>,
     viewport: Arc<Viewport>,
-    ubo: Option<Arc<CpuAccessibleBuffer<[compute_shader::ty::rodata]>>>
+    ubo: Option<Arc<CpuAccessibleBuffer<[compute_shader::ty::rodata]>>>,
+    set_people: Option<Arc<PersistentDescriptorSet>>,
+    set_vert: Option<Arc<PersistentDescriptorSet>>,
+    set_ubo: Option<Arc<PersistentDescriptorSet>>,
 }
 
 impl VulkanContext {
@@ -117,8 +120,13 @@ impl VulkanContext {
         let mut ctx = VulkanContext {
             instance: {
                 let _span = tracy_client::span!("Create Instance");
-                Instance::new(Some(&vulkano::app_info_from_cargo_toml!()), Version::V1_2, &req_ext, None)
-                    .expect("Couldn't initialize Vulkano Instance")
+                Instance::new(
+                    Some(&vulkano::app_info_from_cargo_toml!()),
+                    Version::V1_2,
+                    &req_ext,
+                    None,
+                )
+                .expect("Couldn't initialize Vulkano Instance")
             },
             event_loop: EventLoop::new(),
             // All initialized in the following code
@@ -144,7 +152,10 @@ impl VulkanContext {
                 dimensions: [x as f32, y as f32],
                 depth_range: 0.0..1.0,
             }),
-            ubo: None
+            ubo: None,
+            set_people: None,
+            set_vert: None,
+            set_ubo: None,
         };
 
         {
@@ -172,16 +183,14 @@ impl VulkanContext {
                     for qf in p.queue_families() {
                         if qf.supports_graphics()
                             && ctx
-                            .surface
-                            .as_ref()
-                            .unwrap()
-                            .is_supported(qf)
-                            .unwrap_or(false)
+                                .surface
+                                .as_ref()
+                                .unwrap()
+                                .is_supported(qf)
+                                .unwrap_or(false)
                         {
                             supports_graphics = Some(qf);
-                        }
-
-                        else if qf.supports_compute() {
+                        } else if qf.supports_compute() {
                             supports_compute = Some(qf);
                         }
 
@@ -191,7 +200,7 @@ impl VulkanContext {
                     }
 
                     if let (Some(graphics_queue), Some(compute_queue)) =
-                    (supports_graphics, supports_compute)
+                        (supports_graphics, supports_compute)
                     {
                         Some((p, graphics_queue, compute_queue))
                     } else {
@@ -215,7 +224,7 @@ impl VulkanContext {
                     .iter()
                     .cloned(),
             )
-                .expect("Couldn't make the device and queues");
+            .expect("Couldn't make the device and queues");
 
             ctx.device = Some(device);
 
@@ -229,27 +238,33 @@ impl VulkanContext {
 
             let (swapchain, images) = {
                 // Capabilities
-                let caps = ctx.surface.as_ref().unwrap().capabilities(ctx.device.as_ref().unwrap().clone().physical_device()).unwrap();
+                let caps = ctx
+                    .surface
+                    .as_ref()
+                    .unwrap()
+                    .capabilities(ctx.device.as_ref().unwrap().clone().physical_device())
+                    .unwrap();
                 // Alpha
                 let alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
                 // The format the images will have
                 let format = caps.supported_formats[0].0;
 
-                let dimensions: [u32; 2] = ctx.surface.as_ref().unwrap().window().inner_size().into();
+                let dimensions: [u32; 2] =
+                    ctx.surface.as_ref().unwrap().window().inner_size().into();
 
                 Swapchain::start(
                     ctx.device.as_ref().unwrap().clone(),
                     ctx.surface.as_ref().unwrap().clone(),
                 )
-                    .num_images(caps.min_image_count)
-                    .format(format)
-                    .dimensions(dimensions)
-                    .usage(ImageUsage::color_attachment())
-                    .sharing_mode(ctx.graphics_queue.as_ref().unwrap())
-                    .composite_alpha(alpha)
-                    .build()
-                    .unwrap()
+                .num_images(caps.min_image_count)
+                .format(format)
+                .dimensions(dimensions)
+                .usage(ImageUsage::color_attachment())
+                .sharing_mode(ctx.graphics_queue.as_ref().unwrap())
+                .composite_alpha(alpha)
+                .build()
+                .unwrap()
             };
 
             ctx.swapchain = Some(swapchain);
@@ -276,7 +291,7 @@ impl VulkanContext {
                     None,
                     |_| {},
                 )
-                    .expect("Couldn't create compute pipeline"),
+                .expect("Couldn't create compute pipeline"),
             ));
         }
 
@@ -284,21 +299,21 @@ impl VulkanContext {
             let _span = tracy_client::span!("Create render pass");
             let render_pass = Arc::new(
                 vulkano::single_pass_renderpass!(
-                ctx.device.as_ref().unwrap().clone(),
-                attachments: {
-                    color: {
-                        load: Clear,
-                        store: Store,
-                        format: ctx.swapchain.as_ref().unwrap().format(),
-                        samples: 1,
+                    ctx.device.as_ref().unwrap().clone(),
+                    attachments: {
+                        color: {
+                            load: Clear,
+                            store: Store,
+                            format: ctx.swapchain.as_ref().unwrap().format(),
+                            samples: 1,
+                        }
+                    },
+                    pass: {
+                        color: [color],
+                        depth_stencil: {}
                     }
-                },
-                pass: {
-                    color: [color],
-                    depth_stencil: {}
-                }
-            )
-                    .unwrap(),
+                )
+                .unwrap(),
             );
 
             ctx.render_pass = Some(render_pass);
@@ -312,7 +327,9 @@ impl VulkanContext {
                     .vertex_shader(ctx.vert_shader.as_ref().unwrap().main_entry_point(), ())
                     .fragment_shader(ctx.frag_shader.as_ref().unwrap().main_entry_point(), ())
                     .viewports([ctx.viewport.as_ref().clone()])
-                    .render_pass(Subpass::from(ctx.render_pass.as_ref().unwrap().clone(), 0).unwrap())
+                    .render_pass(
+                        Subpass::from(ctx.render_pass.as_ref().unwrap().clone(), 0).unwrap(),
+                    )
                     .point_list()
                     .build(ctx.device.as_ref().unwrap().clone())
                     .expect("Couldn't build graphics pipeline"),
@@ -339,7 +356,7 @@ impl VulkanContext {
                         false,
                         people.iter().cloned(),
                     )
-                        .expect("Couldn't create people buffer"),
+                    .expect("Couldn't create people buffer"),
                 );
             }
             {
@@ -352,8 +369,11 @@ impl VulkanContext {
                         [
                             ctx.compute_queue.as_ref().unwrap().family(),
                             ctx.graphics_queue.as_ref().unwrap().family(),
-                        ].iter().cloned()
-                    ).expect("Couldn't create vertex buffer"),
+                        ]
+                        .iter()
+                        .cloned(),
+                    )
+                    .expect("Couldn't create vertex buffer"),
                 );
             }
             {
@@ -369,20 +389,49 @@ impl VulkanContext {
                             size_x: x as u32,
                             size_y: y as u32,
                             len: people.len() as u32,
-                        }].iter().cloned()
-
-                    ).expect("Couldn't create UBO")
+                        }]
+                        .iter()
+                        .cloned(),
+                    )
+                    .expect("Couldn't create UBO"),
                 )
             }
         }
 
         ctx.previous_frame_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
 
+        let layout = ctx.comp_pipeline.as_ref().unwrap().layout();
+
+        {
+            let _span = tracy_client::span!("Build descriptor sets");
+
+            let mut people_builder =
+                PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[0].clone());
+            people_builder
+                .add_buffer(ctx.people_buf.as_ref().unwrap().clone())
+                .unwrap();
+
+            let mut vert_builder =
+                PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[1].clone());
+            vert_builder
+                .add_buffer(ctx.vertex_buf.as_ref().unwrap().clone())
+                .unwrap();
+
+            let mut ubo_builder =
+                PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[2].clone());
+            ubo_builder
+                .add_buffer(ctx.ubo.as_ref().unwrap().clone())
+                .unwrap();
+
+            ctx.set_people = Some(Arc::new(people_builder.build().unwrap()));
+            ctx.set_vert = Some(Arc::new(vert_builder.build().unwrap()));
+            ctx.set_ubo = Some(Arc::new(ubo_builder.build().unwrap()));
+        };
+
         ctx
     }
 
     pub(crate) fn render(&mut self) -> Result<(), String> {
-
         let mut result = Ok(());
 
         self.event_loop
@@ -437,12 +486,15 @@ impl VulkanContext {
                                 return;
                             }
                             Err(e) => panic!("Failed to acquire next image: {:?}", e),
-                        }};
+                        }
+                    };
                     if suboptimal {
                         self.recreate_swapchain = true;
                     }
 
-                    let mut compute_command_builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
+                    let mut compute_command_builder: AutoCommandBufferBuilder<
+                        PrimaryAutoCommandBuffer,
+                    >;
 
                     {
                         let _span = tracy_client::span!("Create Compute CommandBufferBuilder");
@@ -451,35 +503,28 @@ impl VulkanContext {
                             self.device.as_ref().unwrap().clone(),
                             self.compute_queue.as_ref().unwrap().family(),
                             CommandBufferUsage::OneTimeSubmit,
-                        ).expect("Couldn't create the Compute Command Buffer Builder");
+                        )
+                        .expect("Couldn't create the Compute Command Buffer Builder");
                     }
 
                     let layout = self.comp_pipeline.as_ref().unwrap().layout();
-
-                    let (set_people, set_vert, set_ubo) = {
-                        let _span = tracy_client::span!("Build descriptor sets");
-                        (Arc::new(
-                            PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[0].clone())
-                                .add_buffer(self.people_buf.as_ref().unwrap().clone()).unwrap()
-                                .build().unwrap()
-                        ), Arc::new(
-                            PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[1].clone())
-                                .add_buffer(self.vertex_buf.as_ref().unwrap().clone()).unwrap()
-                                .build().unwrap()
-                        ), Arc::new(
-                            PersistentDescriptorSet::start(layout.clone().descriptor_set_layouts()[2].clone())
-                                .add_buffer(self.ubo.as_ref().unwrap().clone()).unwrap()
-                                .build().unwrap()
-                        ))
-                    };
 
                     {
                         println!("Running compute shader");
                         let _span = tracy_client::span!("Run compute shader");
                         compute_command_builder
                             .bind_pipeline_compute(self.comp_pipeline.as_ref().unwrap().clone())
-                            .bind_descriptor_sets(PipelineBindPoint::Compute, layout.clone(), 0, vec![set_people.clone(),set_vert.clone(),set_ubo.clone()])
-                            .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32,1,1])
+                            .bind_descriptor_sets(
+                                PipelineBindPoint::Compute,
+                                layout.clone(),
+                                0,
+                                vec![
+                                    self.set_people.as_ref().unwrap().clone(),
+                                    self.set_vert.as_ref().unwrap().clone(),
+                                    self.set_ubo.as_ref().unwrap().clone(),
+                                ],
+                            )
+                            .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32, 1, 1])
                             .unwrap();
 
                         println!("Started compute shader");
@@ -487,7 +532,7 @@ impl VulkanContext {
                         let future = sync::now(self.device.as_ref().unwrap().clone())
                             .then_execute(
                                 self.compute_queue.as_ref().unwrap().clone(),
-                                compute_command_builder.build().unwrap()
+                                compute_command_builder.build().unwrap(),
                             )
                             .unwrap()
                             .then_signal_fence_and_flush()
@@ -499,7 +544,9 @@ impl VulkanContext {
                     }
 
                     let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
-                    let mut graphics_command_builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
+                    let mut graphics_command_builder: AutoCommandBufferBuilder<
+                        PrimaryAutoCommandBuffer,
+                    >;
 
                     {
                         let _span = tracy_client::span!("Create Graphics CommandBufferBuilder");
@@ -508,7 +555,8 @@ impl VulkanContext {
                             self.device.as_ref().unwrap().clone(),
                             self.graphics_queue.as_ref().unwrap().family(),
                             CommandBufferUsage::OneTimeSubmit,
-                        ).expect("Couldn't create the Graphics Command Buffer Builder");
+                        )
+                        .expect("Couldn't create the Graphics Command Buffer Builder");
                     }
 
                     {
@@ -521,7 +569,9 @@ impl VulkanContext {
                             )
                             .unwrap()
                             .set_viewport(0, [self.viewport.as_ref().clone()])
-                            .bind_pipeline_graphics(self.graphics_pipeline.as_ref().unwrap().clone())
+                            .bind_pipeline_graphics(
+                                self.graphics_pipeline.as_ref().unwrap().clone(),
+                            )
                             .bind_vertex_buffers(0, self.vertex_buf.as_ref().unwrap().clone())
                             .draw(self.vertex_buf.as_ref().unwrap().len() as u32, 1, 0, 0)
                             .unwrap()
