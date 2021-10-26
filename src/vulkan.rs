@@ -491,7 +491,7 @@ impl VulkanContext {
                             .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32,1,1])
                             .unwrap();
 
-                        plintln!("Started compute shader");
+                        println!("Started compute shader");
 
                         let future = sync::now(self.device.as_ref().unwrap().clone())
                             .then_execute(
