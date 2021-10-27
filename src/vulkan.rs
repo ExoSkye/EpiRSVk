@@ -13,14 +13,15 @@ use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::Instance;
+use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain::{AcquireError, Surface, Swapchain, SwapchainCreationError};
 use vulkano::sync::{FlushError, GpuFuture};
-use vulkano::Version;
+use vulkano::{instance, Version};
 use vulkano::{swapchain, sync};
+use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
 use vulkano_win::VkSurfaceBuild;
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
@@ -80,6 +81,7 @@ struct Vertex {
 
 pub(crate) struct VulkanContext {
     instance: Arc<Instance>,
+    debug_callback: Option<DebugCallback>,
     event_loop: EventLoop<()>,
     recreate_swapchain: bool,
     surface: Option<Arc<Surface<Window>>>,
@@ -109,20 +111,28 @@ impl VulkanContext {
     pub(crate) fn new(people: Vec<Person>, x: i32, y: i32) -> VulkanContext {
         vulkano::impl_vertex!(Vertex, pos, color);
 
-        let req_ext = vulkano_win::required_extensions();
+        let req_ext = InstanceExtensions {
+            ext_debug_utils: true,
+            ..vulkano_win::required_extensions()
+        };
 
         let dev_ext = DeviceExtensions {
             khr_swapchain: true,
             khr_storage_buffer_storage_class: true,
-            ext_debug_utils: true,
             ..DeviceExtensions::none()
         };
 
+        println!("List of Vulkan debugging layers available to use:");
+        let mut layers = instance::layers_list().unwrap();
+        while let Some(l) = layers.next() {
+            println!("\t{}", l.name());
+        }
+
         #[cfg(not(target_os = "macos"))]
-            let layers = vec!["VK_LAYER_LUNARG_standard_validation"];
+            let layers_to_use = vec!["VK_LAYER_LUNARG_standard_validation"];
 
         #[cfg(target_os = "macos")]
-            let layers = vec!["VK_LAYER_KHRONOS_validation"];
+            let layers_to_use = vec!["VK_LAYER_KHRONOS_validation"];
 
         let mut ctx = VulkanContext {
             instance: {
@@ -131,10 +141,11 @@ impl VulkanContext {
                     Some(&vulkano::app_info_from_cargo_toml!()),
                     Version::V1_2,
                     &req_ext,
-                    layers,
+                    layers_to_use,
                 )
                 .expect("Couldn't initialize Vulkano Instance")
             },
+            debug_callback: None,
             event_loop: EventLoop::new(),
             // All initialized in the following code
             surface: None,
@@ -164,6 +175,49 @@ impl VulkanContext {
             set_vert: None,
             set_ubo: None,
         };
+
+        let severity = MessageSeverity {
+            error: true,
+            warning: true,
+            information: true,
+            verbose: true,
+        };
+
+        let ty = MessageType::all();
+
+        ctx.debug_callback = Some(DebugCallback::new(&ctx.instance, severity, ty, |msg|
+            {
+                let severity = if msg.severity.error {
+                    "error"
+                } else if msg.severity.warning {
+                    "warning"
+                } else if msg.severity.information {
+                    "information"
+                } else if msg.severity.verbose {
+                    "verbose"
+                } else {
+                    panic!("no-impl");
+                };
+
+                let ty = if msg.ty.general {
+                    "general"
+                } else if msg.ty.validation {
+                    "validation"
+                } else if msg.ty.performance {
+                    "performance"
+                } else {
+                    panic!("no-impl");
+                };
+
+                println!(
+                    "{} {} {}: {}",
+                    msg.layer_prefix.unwrap_or("unknown"),
+                    ty,
+                    severity,
+                    msg.description
+                );
+            }).expect("Couldn't create debug callback")
+        );
 
         {
             let _span = tracy_client::span!("Create surface");
@@ -406,7 +460,6 @@ impl VulkanContext {
         }
 
         ctx.previous_frame_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
-        ctx.previous_compute_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
 
 
         let layout = ctx.comp_pipeline.as_ref().unwrap().layout();
