@@ -114,15 +114,8 @@ impl VulkanContext {
         let dev_ext = DeviceExtensions {
             khr_swapchain: true,
             khr_storage_buffer_storage_class: true,
-            ext_debug_utils: true,
             ..DeviceExtensions::none()
         };
-
-        #[cfg(not(target_os = "macos"))]
-            let layers = vec!["VK_LAYER_LUNARG_standard_validation"];
-
-        #[cfg(target_os = "macos")]
-            let layers = vec!["VK_LAYER_KHRONOS_validation"];
 
         let mut ctx = VulkanContext {
             instance: {
@@ -131,7 +124,7 @@ impl VulkanContext {
                     Some(&vulkano::app_info_from_cargo_toml!()),
                     Version::V1_2,
                     &req_ext,
-                    layers,
+                    None,
                 )
                 .expect("Couldn't initialize Vulkano Instance")
             },
@@ -406,8 +399,6 @@ impl VulkanContext {
         }
 
         ctx.previous_frame_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
-        ctx.previous_compute_end = Some(sync::now(ctx.device.as_ref().unwrap().clone()).boxed());
-
 
         let layout = ctx.comp_pipeline.as_ref().unwrap().layout();
 
@@ -520,6 +511,7 @@ impl VulkanContext {
 
                     {
                         println!("Running compute shader");
+                        let _span = tracy_client::span!("Run compute shader");
                         compute_command_builder
                             .bind_pipeline_compute(self.comp_pipeline.as_ref().unwrap().clone())
                             .bind_descriptor_sets(
@@ -535,6 +527,8 @@ impl VulkanContext {
                             .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32, 1, 1])
                             .unwrap();
 
+                        println!("Started compute shader");
+
                         let future = sync::now(self.device.as_ref().unwrap().clone())
                             .then_execute(
                                 self.compute_queue.as_ref().unwrap().clone(),
@@ -545,6 +539,8 @@ impl VulkanContext {
                             .unwrap();
 
                         future.wait(None).unwrap();
+
+                        println!("Compute shader finished");
                     }
 
                     let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
