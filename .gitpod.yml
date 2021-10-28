@@ -4,6 +4,7 @@ tasks:
       sudo docker pull registry.jetbrains.team/p/prj/containers/projector-clion
     command: |
       sudo mkdir -p .jetbrains; sudo touch .jetbrains/.gitkeep; sudo chown -R 1000:1000 .jetbrains
+      sudo mkdir -p .config; sudo chown -R 1000:1000 .config
       sudo docker run --rm -p 8887:8887 -v /workspace/EpiRSVk:/home/projector-user -it registry.jetbrains.team/p/prj/containers/projector-clion
       
 ports:
