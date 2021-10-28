@@ -529,16 +529,27 @@ impl VulkanContext {
 
                         println!("Started compute shader");
 
-                        let future = sync::now(self.device.as_ref().unwrap().clone())
+                        let future = self
+                            .previous_frame_end
+                            .take()
+                            .unwrap()
                             .then_execute(
                                 self.compute_queue.as_ref().unwrap().clone(),
                                 compute_command_builder.build().unwrap(),
                             )
                             .unwrap()
-                            .then_signal_fence_and_flush()
-                            .unwrap();
+                            .then_signal_fence_and_flush();
 
-                        future.wait(None).unwrap();
+                        match future {
+                            Ok(future) => {
+                                self.previous_frame_end = Some(future.boxed());
+                            }
+                            Err(e) => {
+                                println!("Failed to flush future: {:?}", e);
+                                self.previous_frame_end =
+                                    Some(sync::now(self.device.as_ref().unwrap().clone()).boxed());
+                            }
+                        }
 
                         println!("Compute shader finished");
                     }
