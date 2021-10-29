@@ -16,6 +16,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        type: [debug, release]
 
 
     runs-on: ${{ matrix.os }}
@@ -26,21 +27,34 @@ jobs:
     - name: Update Toolchain (Run cargo)
       run: cargo
 
-    - uses: Swatinem/rust-cache@v1
+    - name: Use rust cache (Release)
+      uses: Swatinem/rust-cache@v1
+      if: ${{ matrix.type }} == "release"
       with:
           key: ${{ secrets.key }}
+          
+    - name: Use rust cache (Debug)
+      uses: Swatinem/rust-cache@v1
+      if: ${{ matrix.type }} == "debug"
+      with:
+          key: ${{ secrets.key }}-${{ matrix.type }}
     
     - name: Get CMake and Ninja (Windows only)
       if: ${{ matrix.os }} == "windows-latest"
       uses: lukka/get-cmake@v3.21.2
       
-    - name: Build
+    - name: Build Release
+      if: ${{ matrix.type }} == "release"
       run: cargo build --verbose --release
+      
+    - name: Build Debug
+      if: ${{ matrix.type }} == "debug"
+      run: cargo build --verbose
       
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v2.2.4
       with:
         name: ${{ matrix.os }}
         path: |
-          target/release/EpiRSVk.exe
-          target/release/EpiRSVk
+          target/${{ matrix.type }}/EpiRSVk.exe
+          target/${{ matrix.type }}/EpiRSVk
