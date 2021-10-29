@@ -28,14 +28,14 @@ jobs:
       run: cargo
 
     - name: Use rust cache (Release)
-      uses: Swatinem/rust-cache@v1
       if: ${{ matrix.type }} == "release"
+      uses: Swatinem/rust-cache@v1
       with:
           key: ${{ secrets.key }}
           
     - name: Use rust cache (Debug)
-      uses: Swatinem/rust-cache@v1
       if: ${{ matrix.type }} == "debug"
+      uses: Swatinem/rust-cache@v1
       with:
           key: ${{ secrets.key }}-${{ matrix.type }}
     
@@ -56,5 +56,8 @@ jobs:
       with:
         name: ${{ matrix.os }}
         path: |
-          target/${{ matrix.type }}/EpiRSVk.exe
-          target/${{ matrix.type }}/EpiRSVk
+          target/release/EpiRSVk.exe
+          target/release/EpiRSVk
+          target/debug/EpiRSVk.exe
+          target/debug/EpiRSVk.pdb
+          target/debug/EpiRSVk
