@@ -34,7 +34,7 @@ layout (set = 2, binding = 0) uniform rodata {
 void main() {
     uint index = gl_GlobalInvocationID.x;
     if (index < len) {
-        verticies[index].vertex_pos = people[index].person_pos;
+        verticies[index].vertex_pos = vec2((people[index].person_pos.x / (size_x / 2)) - 1, (people[index].person_pos.y / (size_y / 2)) - 1);
         verticies[index].color = vec3(1.0,1.0,1.0);
     }
 }

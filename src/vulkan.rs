@@ -510,7 +510,6 @@ impl VulkanContext {
                     let layout = self.comp_pipeline.as_ref().unwrap().layout();
 
                     {
-                        println!("Running compute shader");
                         let _span = tracy_client::span!("Run compute shader");
                         compute_command_builder
                             .bind_pipeline_compute(self.comp_pipeline.as_ref().unwrap().clone())
@@ -527,8 +526,6 @@ impl VulkanContext {
                             .dispatch([(self.people_buf.as_ref().unwrap().len() / 64) as u32, 1, 1])
                             .unwrap();
 
-                        println!("Started compute shader");
-
                         let future = self
                             .previous_frame_end
                             .take()
@@ -542,6 +539,7 @@ impl VulkanContext {
 
                         match future {
                             Ok(future) => {
+                                future.wait(None).unwrap();
                                 self.previous_frame_end = Some(future.boxed());
                             }
                             Err(e) => {
@@ -550,8 +548,6 @@ impl VulkanContext {
                                     Some(sync::now(self.device.as_ref().unwrap().clone()).boxed());
                             }
                         }
-
-                        println!("Compute shader finished");
                     }
 
                     let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
@@ -610,6 +606,7 @@ impl VulkanContext {
 
                         match future {
                             Ok(future) => {
+                                future.wait(None).unwrap();
                                 self.previous_frame_end = Some(future.boxed());
                             }
                             Err(FlushError::OutOfDate) => {
