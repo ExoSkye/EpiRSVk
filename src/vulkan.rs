@@ -1,5 +1,6 @@
 use crate::person::Person;
 use std::boxed::Box;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use tracy_client;
 use vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer;
@@ -17,7 +18,7 @@ use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain::{AcquireError, Surface, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, PresentMode, Surface, Swapchain, SwapchainCreationError};
 use vulkano::sync::{FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano::{swapchain, sync};
@@ -27,6 +28,7 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Window, WindowBuilder};
+use rand::Rng;
 
 mod vert_shader {
     vulkano_shaders::shader! {
@@ -74,11 +76,14 @@ fn window_size_dependent_setup(
 
 #[derive(Default, Debug, Clone, Copy)]
 struct Vertex {
-    pos: [f32; 2],
+    vertex_pos: [f32; 2],
+    pad0: [u32; 2],
     color: [f32; 3],
+    pad1: u32
 }
 
 pub(crate) struct VulkanContext {
+    rng: rand::rngs::ThreadRng,
     instance: Arc<Instance>,
     event_loop: EventLoop<()>,
     recreate_swapchain: bool,
@@ -107,7 +112,7 @@ pub(crate) struct VulkanContext {
 
 impl VulkanContext {
     pub(crate) fn new(people: Vec<Person>, x: i32, y: i32) -> VulkanContext {
-        vulkano::impl_vertex!(Vertex, pos, color);
+        vulkano::impl_vertex!(Vertex, vertex_pos, color);
 
         let req_ext = vulkano_win::required_extensions();
 
@@ -118,6 +123,7 @@ impl VulkanContext {
         };
 
         let mut ctx = VulkanContext {
+            rng: rand::thread_rng(),
             instance: {
                 let _span = tracy_client::span!("Create Instance");
                 Instance::new(
@@ -263,6 +269,7 @@ impl VulkanContext {
                 .usage(ImageUsage::color_attachment())
                 .sharing_mode(ctx.graphics_queue.as_ref().unwrap())
                 .composite_alpha(alpha)
+                .present_mode(PresentMode::Immediate)
                 .build()
                 .unwrap()
             };
@@ -389,6 +396,7 @@ impl VulkanContext {
                             size_x: x as u32,
                             size_y: y as u32,
                             len: people.len() as u32,
+                            seed: 0.0
                         }]
                         .iter()
                         .cloned(),
@@ -511,6 +519,13 @@ impl VulkanContext {
 
                     {
                         let _span = tracy_client::span!("Run compute shader");
+
+                        let mut ubo_lock = self.ubo.as_ref().unwrap().write().expect("Couldn't lock UBO");
+
+                        ubo_lock.deref_mut()[0].seed = self.rng.gen();
+
+                        drop(ubo_lock);
+
                         compute_command_builder
                             .bind_pipeline_compute(self.comp_pipeline.as_ref().unwrap().clone())
                             .bind_descriptor_sets(
