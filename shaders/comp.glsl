@@ -77,8 +77,17 @@ void main() {
         pos.x += (rx - 0.5) * 2;
         pos.y += (ry - 0.5) * 2;
 
-        if (pos.x > size_x || pos.x < 0 || pos.y > size_y || pos.y < 0) {
-            pos = old_pos;
+        if (pos.x > size_x) {
+            pos = old_pos - vec2(2,0);
+        }
+        if (pos.x < 0) {
+            pos = old_pos + vec2(2,0);
+        }
+        if (pos.y > size_x) {
+            pos = old_pos - vec2(0,2);
+        }
+        if (pos.x < 0) {
+            pos = old_pos + vec2(0,2);
         }
 
         people[index].person_pos = pos;

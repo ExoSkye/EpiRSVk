@@ -1,0 +1,8 @@
+config:
+  screen:
+    size:
+      x: 512
+      y: 512
+
+  sim:
+    population: 10000
