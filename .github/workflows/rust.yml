@@ -26,16 +26,6 @@ jobs:
 
     - name: Update Toolchain (Run cargo)
       run: cargo
-      
-    - name: Create .cargo/config
-      uses: 1arp/create-a-file-action@0.2
-      with:
-        path: ~/.cargo/
-        file: config
-        # The content of the file
-        content: |
-          [target.x86_64-pc-windows-msvc]
-          rustflags = ["-C", "target-feature=+crt-static"]
 
     - name: Use rust cache (Release)
       if: matrix.type == 'release'
