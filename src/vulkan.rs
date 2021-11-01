@@ -33,21 +33,24 @@ use rand::Rng;
 mod vert_shader {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "shaders/vert.glsl"
+        path: "shaders/vert.glsl",
+        vulkan_version: "1.1"
     }
 }
 
 mod frag_shader {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "shaders/frag.glsl"
+        path: "shaders/frag.glsl",
+        vulkan_version: "1.1"
     }
 }
 
 mod compute_shader {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "shaders/comp.glsl"
+        path: "shaders/comp.glsl",
+        vulkan_version: "1.1"
     }
 }
 
@@ -128,7 +131,7 @@ impl VulkanContext {
                 let _span = tracy_client::span!("Create Instance");
                 Instance::new(
                     Some(&vulkano::app_info_from_cargo_toml!()),
-                    Version::V1_2,
+                    Version::V1_1,
                     &req_ext,
                     None,
                 )
