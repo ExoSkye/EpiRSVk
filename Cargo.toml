@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 vulkano = "0.32.3"
-winit = "0.27.5"
+winit = "0.28.3"
 vulkano-win = "0.32.0"
 vulkano-shaders = "0.32.0"
 rand = "0.8.4"
